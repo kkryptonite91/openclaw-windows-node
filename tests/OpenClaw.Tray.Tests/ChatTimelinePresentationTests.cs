@@ -626,6 +626,28 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ToolCallRendererBoundary_UsesRenderOnlyExecIdentityOverride()
+    {
+        var timeline = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var renderer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
+
+        Assert.Contains("ChatTimelineItemKind.ToolCall => BuildStandaloneToolCall(row, entry)", timeline);
+        Assert.Contains("entry.ToolName", timeline);
+        Assert.Contains("? entry with { ToolName = \"memory_search\" }", timeline);
+        Assert.Contains(": entry;", timeline);
+        Assert.Contains("BuildStandalone(row.Props.Timeline, renderEntry)", timeline);
+        Assert.DoesNotContain("entry.ToolName =", timeline);
+        Assert.Contains("? \"Command\"", renderer);
+        Assert.Contains(
+            "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")}. {statusLabel}.\"",
+            renderer);
+    }
+
+    [Fact]
     public void ReactorTimeline_RendersStructuredCompactionCard()
     {
         var timeline = File.ReadAllText(Path.Combine(

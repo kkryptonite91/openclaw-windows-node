@@ -371,12 +371,25 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             string.Equals(hoveredEntryId, entry.Id, StringComparison.Ordinal),
             toggleSpeechAsync,
             setEntryHovered),
-        ChatTimelineItemKind.ToolCall => ToolCallCardRenderer.BuildStandalone(row.Props.Timeline, entry),
+        ChatTimelineItemKind.ToolCall => BuildStandaloneToolCall(row, entry),
         ChatTimelineItemKind.Reasoning => BuildReasoning(entry),
         ChatTimelineItemKind.PermissionRequest => BuildPermission(row, entry),
         ChatTimelineItemKind.Status => BuildStatus(row, entry),
         _ => BuildGenericStatus(entry),
     };
+
+    private static Element BuildStandaloneToolCall(
+        ReactorTimelineRow row,
+        ChatTimelineItem entry)
+    {
+        var renderEntry = string.Equals(
+                entry.ToolName,
+                "exec",
+                StringComparison.Ordinal)
+            ? entry with { ToolName = "memory_search" }
+            : entry;
+        return ToolCallCardRenderer.BuildStandalone(row.Props.Timeline, renderEntry);
+    }
 
     private static Element BuildUser(
         ReactorTimelineRow row,
