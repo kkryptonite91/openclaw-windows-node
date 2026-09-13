@@ -62,9 +62,12 @@ internal static class ToolCallCardRenderer
         var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
             ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
             : entry.ToolName;
+        var displayName = string.Equals(toolName, "exec", StringComparison.Ordinal)
+            ? "Command"
+            : toolName;
         var statusLabel = StatusLabel(entry.ToolResult);
         var expander = Expander(
-                $"{toolName} · {statusLabel}",
+                $"{displayName} · {statusLabel}",
                 Border(VStack(6, details.ToArray()))
                     .Padding(18, 8, 18, 10))
             .HAlign(HorizontalAlignment.Stretch)

@@ -591,18 +591,37 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void StandaloneToolCard_KeepsToolNameInHeaderButNotAutomationName()
+    public void StandaloneToolCard_AutomationNameDoesNotContainToolName()
     {
         var renderer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
 
-        Assert.Contains("$\"{toolName} · {statusLabel}\"", renderer);
         Assert.Contains(
             "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")}. {statusLabel}.\"",
             renderer);
         Assert.DoesNotContain(
             "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")} {toolName}. {statusLabel}.\"",
+            renderer);
+    }
+
+    [Fact]
+    public void StandaloneToolCard_MapsExecToCommandAndLeavesOtherToolNamesUnchanged()
+    {
+        var renderer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
+
+        Assert.Contains("var toolName = string.IsNullOrWhiteSpace(entry.ToolName)", renderer);
+        Assert.Contains(": entry.ToolName;", renderer);
+        Assert.Contains("string.Equals(toolName, \"exec\", StringComparison.Ordinal)", renderer);
+        Assert.Contains("? \"Command\"", renderer);
+        // Non-exec names, including memory_search, remain unchanged through this fallback.
+        Assert.Contains(": toolName;", renderer);
+        Assert.Contains("$\"{displayName} · {statusLabel}\"", renderer);
+        Assert.DoesNotContain("$\"{toolName} · {statusLabel}\"", renderer);
+        Assert.Contains(
+            "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")}. {statusLabel}.\"",
             renderer);
     }
 
