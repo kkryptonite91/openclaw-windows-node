@@ -71,7 +71,7 @@ internal static class ToolCallCardRenderer
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .AutomationId($"ChatToolCall_{SanitizeAutomationId(entry.Id)}")
             .AutomationName(
-                $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {toolName}. {statusLabel}.")
+                $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")}. {statusLabel}.")
             .WithKey($"tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}");
 
         if (isNested)

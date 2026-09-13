@@ -591,6 +591,22 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void StandaloneToolCard_KeepsToolNameInHeaderButNotAutomationName()
+    {
+        var renderer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
+
+        Assert.Contains("$\"{toolName} · {statusLabel}\"", renderer);
+        Assert.Contains(
+            "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")}. {statusLabel}.\"",
+            renderer);
+        Assert.DoesNotContain(
+            "$\"{LocalizedOrDefault(\"Chat_Tool_CallLabel\", \"Tool call\")} {toolName}. {statusLabel}.\"",
+            renderer);
+    }
+
+    [Fact]
     public void ReactorTimeline_RendersStructuredCompactionCard()
     {
         var timeline = File.ReadAllText(Path.Combine(
