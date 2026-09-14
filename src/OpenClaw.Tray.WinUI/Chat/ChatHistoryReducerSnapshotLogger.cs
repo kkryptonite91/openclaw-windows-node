@@ -36,6 +36,7 @@ internal static class ChatHistoryReducerSnapshotLogger
     private const string Prefix = "CHAT_PERTURB";
     private const string StageS1 = "S1";
     private const string StageS2 = "S2";
+    private const string StageS3 = "S3";
     private const string NullToken = "<null>";
     private const string PresentToken = "<present>";
 
@@ -116,6 +117,26 @@ internal static class ChatHistoryReducerSnapshotLogger
         }
     }
 
+
+    /// <summary>
+    /// Emit one <c>S3</c> summary record immediately before the chat-root
+    /// presentation projection executes. Carries only a minimal summary;
+    /// never enumerates <paramref name="entries"/> and never references
+    /// identity, runtime helpers, or the projected payload.
+    /// </summary>
+    public static void LogS3BeforePresentationProjection(
+        long revision,
+        int entriesCount,
+        long timelineGeneration)
+    {
+        Append(StageS3, new[]
+        {
+            "revision=" + revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "entries_count=" + entriesCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "timeline_generation=" + timelineGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "presentation_projection_pending=true",
+        });
+    }
     private static string ClassifyEventType(ChatEvent evt)
     {
         return evt switch

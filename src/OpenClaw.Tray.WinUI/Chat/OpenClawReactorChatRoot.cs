@@ -164,6 +164,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ? metadataProvider.GetEntryMetadata(effectiveThread.Id)
             : null;
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
+        ChatHistoryReducerSnapshotLogger.LogS3BeforePresentationProjection(historyRevision, entries.Count, timelineGeneration);
         var presentationEntries = historyPresentationCache.Current.Project(
             entries,
             entryMetadata,
