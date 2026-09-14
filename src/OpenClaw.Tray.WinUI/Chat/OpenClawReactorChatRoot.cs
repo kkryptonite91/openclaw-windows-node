@@ -68,6 +68,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var (toolCallsCollapseVersion, setToolCallsCollapseVersion) =
             UseState(s_toolCallsCollapseVersion, threadSafe: true);
         var (firstSendInFlight, setFirstSendInFlight) = UseState(false, threadSafe: true);
+        var historyPresentationCache = UseRef(
+            new ChatHistoryReplayPresentationCache());
 
         UseEffect((Func<Action>)(() =>
         {
@@ -162,6 +164,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ? metadataProvider.GetEntryMetadata(effectiveThread.Id)
             : null;
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
+        var presentationEntries = historyPresentationCache.Current.Project(
+            entries,
+            entryMetadata,
+            historyRevision);
         var queuedMessages = effectiveThread is not null
             && snapshot.QueuedMessagesByThread?.TryGetValue(effectiveThread.Id, out var queued) == true
                 ? queued
@@ -239,7 +245,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
-            entries,
+            presentationEntries,
             false,
             null,
             entryMetadata,

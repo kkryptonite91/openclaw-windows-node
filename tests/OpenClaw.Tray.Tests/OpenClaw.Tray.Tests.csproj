@@ -52,6 +52,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerContextMenuState.cs" Link="Chat\ChatComposerContextMenuState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCompactionPresentation.cs" Link="Chat\ChatCompactionPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayProjection.cs" Link="Chat\ChatHistoryReplayProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayPresentationProjection.cs" Link="Chat\ChatHistoryReplayPresentationProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolActivityPresentation.cs" Link="Chat\ChatToolActivityPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\TailNavigationPolicy.cs" Link="Chat\TailNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ReactorSlashCommandController.cs" Link="Chat\ReactorSlashCommandController.cs" />

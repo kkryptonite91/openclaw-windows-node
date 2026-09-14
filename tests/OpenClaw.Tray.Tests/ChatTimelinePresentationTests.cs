@@ -1,9 +1,134 @@
+using OpenClaw.Chat;
 using OpenClawTray.Chat;
+using System.Collections.Immutable;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatTimelinePresentationTests
 {
+    [Fact]
+    public void HistoryExecProjection_IsolatedFromBusinessTimelineAndStable()
+    {
+        var args = new JsonObject { ["query"] = "test" };
+        var correlationIds = ImmutableHashSet.Create("call-1");
+        IReadOnlyList<ChatTimelineItem> source =
+        [
+            new ChatTimelineItem(
+                "e1",
+                ChatTimelineItemKind.ToolCall,
+                "test",
+                ToolName: "exec",
+                ToolResult: ChatToolCallStatus.Success,
+                ToolOutput: "OK",
+                IntentSummary: "test",
+                ToolArgs: args,
+                ToolCallId: "call-1",
+                ToolIdentityStrength: ChatToolIdentityStrength.Explicit,
+                ToolCorrelationIds: correlationIds),
+        ];
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e1"] = new(null, null, IsHistoryReplay: true),
+        };
+        var cache = new ChatHistoryReplayPresentationCache();
+
+        var first = cache.Project(source, metadata, historyRevision: 7);
+        var second = cache.Project(source, metadata, historyRevision: 7);
+
+        Assert.Equal("exec", source[0].ToolName);
+        Assert.NotSame(source, first);
+        Assert.Same(first, second);
+        var presentation = Assert.Single(first);
+        Assert.Equal("Command", presentation.ToolName);
+        Assert.NotSame(source[0], presentation);
+        Assert.Same(presentation, second[0]);
+        Assert.Equal(source[0].Id, presentation.Id);
+        Assert.Equal(source[0].Text, presentation.Text);
+        Assert.Same(args, presentation.ToolArgs);
+        Assert.Equal(source[0].ToolCallId, presentation.ToolCallId);
+        Assert.Same(correlationIds, presentation.ToolCorrelationIds);
+        Assert.Equal(source[0].ToolIdentityStrength, presentation.ToolIdentityStrength);
+        Assert.Equal(source[0].ToolResult, presentation.ToolResult);
+        Assert.Equal(source[0].ToolOutput, presentation.ToolOutput);
+        Assert.Equal(source[0].ToolRunId, presentation.ToolRunId);
+
+        var afterRevisionChange = cache.Project(source, metadata, historyRevision: 8);
+        Assert.NotSame(first, afterRevisionChange);
+        Assert.NotSame(presentation, afterRevisionChange[0]);
+
+        var replacementSource = source.ToArray();
+        var afterSourceChange = cache.Project(replacementSource, metadata, historyRevision: 8);
+        Assert.NotSame(afterRevisionChange, afterSourceChange);
+        Assert.NotSame(afterRevisionChange[0], afterSourceChange[0]);
+    }
+
+    [Fact]
+    public void HistoryMemorySearchAndLiveExec_KeepBusinessIdentityAndReference()
+    {
+        var cache = new ChatHistoryReplayPresentationCache();
+        IReadOnlyList<ChatTimelineItem> historyMemorySearch =
+        [
+            new("e1", ChatTimelineItemKind.ToolCall, "test", ToolName: "memory_search"),
+        ];
+        IReadOnlyList<ChatTimelineItem> liveExec =
+        [
+            new("e2", ChatTimelineItemKind.ToolCall, "test", ToolName: "exec"),
+        ];
+        var historyMetadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e1"] = new(null, null, IsHistoryReplay: true),
+        };
+        var liveMetadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e2"] = new(null, null),
+        };
+
+        var projectedHistoryMemorySearch = cache.Project(
+            historyMemorySearch,
+            historyMetadata,
+            historyRevision: 1);
+        var projectedLiveExec = cache.Project(
+            liveExec,
+            liveMetadata,
+            historyRevision: 2);
+
+        Assert.Same(historyMemorySearch, projectedHistoryMemorySearch);
+        Assert.Same(historyMemorySearch[0], projectedHistoryMemorySearch[0]);
+        Assert.Equal("memory_search", projectedHistoryMemorySearch[0].ToolName);
+        Assert.Same(liveExec, projectedLiveExec);
+        Assert.Same(liveExec[0], projectedLiveExec[0]);
+        Assert.Equal("exec", projectedLiveExec[0].ToolName);
+    }
+
+    [Fact]
+    public void HistoryExecPresentation_SourceContractPreservesBusinessIdentity()
+    {
+        var loader = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatHistoryLoader.cs"));
+        var reducer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Chat",
+            "ChatTimelineReducer.cs"));
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+
+        Assert.Contains("IsHistoryReplay: true", loader);
+        Assert.DoesNotContain("memory_search", loader);
+        Assert.DoesNotContain("\"exec\"", reducer);
+        Assert.Contains("new ChatHistoryReplayPresentationCache()", root);
+        Assert.Contains("presentationEntries,", root);
+    }
+
     [Fact]
     public void ReactorTimeline_UsesNonSelectableItemsViewContainersAndAnnotatedScrollBar()
     {

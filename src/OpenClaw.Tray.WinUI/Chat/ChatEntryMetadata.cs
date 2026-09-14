@@ -68,6 +68,10 @@ namespace OpenClawTray.Chat;
 /// Renderer-safe assistant media presentation. Transport references remain
 /// opaque and are never encoded into timeline text.
 /// </param>
+/// <param name="IsHistoryReplay">
+/// True when this entry was materialized from a gateway history replay rather
+/// than received through the live event stream.
+/// </param>
 public sealed record ChatEntryMetadata(
     DateTimeOffset? Timestamp,
     string? Model,
@@ -85,4 +89,5 @@ public sealed record ChatEntryMetadata(
     bool IsLocalQueuedSend = false,
     string? LocalQueuedMessageId = null,
     IReadOnlyList<ChatAttachmentPresentation>? Attachments = null,
-    ChatAssistantContentPresentation? AssistantContent = null);
+    ChatAssistantContentPresentation? AssistantContent = null,
+    bool IsHistoryReplay = false);

@@ -8195,7 +8195,7 @@ public class OpenClawChatDataProviderTests
                             CallId = "call-1",
                             ToolName = "exec",
                             Args = JsonSerializer.Deserialize<JsonElement>(
-                                """{"command":"pwd","workdir":"/workspace","yieldMs":1000}"""),
+                                """{"query":"test"}"""),
                         },
                     ],
                 },
@@ -8212,7 +8212,7 @@ public class OpenClawChatDataProviderTests
                             Kind = ChatToolContentKind.Result,
                             CallId = "call-1",
                             ToolName = "exec",
-                            Text = "/workspace",
+                            Text = "OK",
                         },
                     ],
                 },
@@ -8223,9 +8223,15 @@ public class OpenClawChatDataProviderTests
 
         var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
         Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
+        Assert.Equal("exec", entry.ToolName);
+        Assert.Equal("call-1", entry.ToolCallId);
+        Assert.NotNull(entry.ToolCorrelationIds);
+        Assert.Contains("call-1", entry.ToolCorrelationIds!);
+        Assert.Equal(ChatToolIdentityStrength.Explicit, entry.ToolIdentityStrength);
         Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
-        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
-        Assert.Equal("/workspace", entry.ToolOutput);
+        Assert.Equal("test", entry.ToolArgs?["query"]?.GetValue<string>());
+        Assert.Equal("OK", entry.ToolOutput);
+        Assert.True(provider.GetEntryMetadata("main")[entry.Id].IsHistoryReplay);
     }
 
     [Fact]
