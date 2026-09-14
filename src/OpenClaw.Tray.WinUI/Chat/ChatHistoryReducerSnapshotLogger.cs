@@ -18,8 +18,16 @@ namespace OpenClawTray.Chat;
 ///     <see cref="ChatTimelineItemKind.ToolCall"/> entry, then emit nothing
 ///     more for non-tool entries.
 ///
+/// S3: emit a single summary record immediately before the chat-root
+///     presentation projection executes.
+///
+/// S4: emit a single marker record immediately before
+///     <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries only
+///     the cached <c>historyRevision</c> scalar; no enumeration, no payload
+///     access.
+///
 /// Intentionally narrow scope:
-///   - supports S1 and S2 only (no S3, no S4);
+///   - supports S1, S2, S3 and S4 only;
 ///   - no <see cref="System.Reflection"/> usage;
 ///   - no <c>RuntimeHelpers</c> usage;
 ///   - no reference-identity comparisons;
@@ -37,6 +45,7 @@ internal static class ChatHistoryReducerSnapshotLogger
     private const string StageS1 = "S1";
     private const string StageS2 = "S2";
     private const string StageS3 = "S3";
+    private const string StageS4 = "S4";
     private const string NullToken = "<null>";
     private const string PresentToken = "<present>";
 
@@ -135,6 +144,24 @@ internal static class ChatHistoryReducerSnapshotLogger
             "entries_count=" + entriesCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "timeline_generation=" + timelineGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "presentation_projection_pending=true",
+        });
+    }
+
+    /// <summary>
+    /// Emit one <c>S4</c> marker record immediately before
+    /// <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries only
+    /// the cached <c>historyRevision</c> scalar; does not read
+    /// <c>props.Timeline.Entries</c>, does not enumerate, does not access the
+    /// presentation payload. The intent is to add a single observer-effect
+    /// call at the <c>ReactorChatTimeline</c> / <c>BuildRows</c> /
+    /// <c>ItemsView</c> boundary without restoring any other instrumentation.
+    /// </summary>
+    public static void LogS4BeforeBuildRows(long historyRevision)
+    {
+        Append(StageS4, new[]
+        {
+            "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "build_rows_pending=true",
         });
     }
     private static string ClassifyEventType(ChatEvent evt)

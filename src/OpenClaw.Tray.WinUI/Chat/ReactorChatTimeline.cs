@@ -100,6 +100,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             }
         }
 
+        ChatHistoryReducerSnapshotLogger.LogS4BeforeBuildRows(props.HistoryRevision);
         var rows = BuildRows(props);
         var initialTailRequestKey =
             $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
