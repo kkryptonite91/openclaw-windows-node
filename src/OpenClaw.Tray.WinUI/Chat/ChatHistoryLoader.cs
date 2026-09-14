@@ -483,6 +483,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             ChatEvent evt,
             ChatEntryMetadata? entryMetadata)
         {
+            ChatHistoryReducerSnapshotLogger.LogS1BeforeApply(evt);
             var before = current.Entries
                 .Select(entry => entry.Id)
                 .ToHashSet(StringComparer.Ordinal);
@@ -940,6 +941,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             .Select(message => message.OpenClawSeq!.Value)
             .DefaultIfEmpty(int.MinValue)
             .Max();
+        ChatHistoryReducerSnapshotLogger.LogS2FinalTimeline(timeline);
         return new(history.SessionId, timeline, metadata, maxSequence);
     }
 
