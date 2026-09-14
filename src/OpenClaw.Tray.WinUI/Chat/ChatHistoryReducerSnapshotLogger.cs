@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using OpenClaw.Chat;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
 
@@ -27,8 +27,9 @@ namespace OpenClawTray.Chat;
 ///   - does not copy or replace the timeline;
 ///   - never mutates any business data passed in.
 ///
-/// Logging is best-effort: any IO failure is swallowed silently because the
-/// instrument must never influence the replay control flow.
+/// Logging is delegated to <see cref="OpenClawTray.Services.Logger.Debug(string)"/>,
+/// which queues writes onto a bounded channel; the call site never blocks on
+/// disk I/O and never holds a process-wide lock.
 /// </summary>
 internal static class ChatHistoryReducerSnapshotLogger
 {
@@ -37,11 +38,6 @@ internal static class ChatHistoryReducerSnapshotLogger
     private const string StageS2 = "S2";
     private const string NullToken = "<null>";
     private const string PresentToken = "<present>";
-
-    private static readonly object _gate = new();
-    private static readonly string _logPath = Path.Combine(
-        Path.GetTempPath(),
-        "openclaw-chat-perturb-s1-s2.log");
 
     /// <summary>
     /// Emit one <c>S1</c> record for a structured history <paramref name="evt"/>
@@ -157,18 +153,6 @@ internal static class ChatHistoryReducerSnapshotLogger
         {
             sb.Append(' ').Append(fields[i]);
         }
-        var line = sb.ToString();
-
-        lock (_gate)
-        {
-            try
-            {
-                File.AppendAllText(_logPath, line + Environment.NewLine);
-            }
-            catch
-            {
-                // Best-effort only. Instrumentation must never alter control flow.
-            }
-        }
+        Logger.Debug(sb.ToString());
     }
 }
