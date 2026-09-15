@@ -108,6 +108,9 @@ public static class ChatToolActivityPresentation
         return rows;
     }
 
+    public static string ToolKey(string? sessionId, long timelineGeneration, string toolEntryId) =>
+        $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|tool:{toolEntryId}";
+
     public static string ActivityKey(string? sessionId, long timelineGeneration, string firstToolEntryId) =>
         $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|activity:{firstToolEntryId}";
 
@@ -261,7 +264,7 @@ public static class ChatToolActivityPresentation
         long timelineGeneration) =>
         new(
             entry.Kind == ChatTimelineItemKind.ToolCall
-                ? ActivityKey(sessionId, timelineGeneration, entry.Id)
+                ? ToolKey(sessionId, timelineGeneration, entry.Id)
                 : $"thread:{sessionId ?? "none"}|generation:{timelineGeneration}|kind:{entry.Kind}|id:{entry.Id}",
             entry,
             [],

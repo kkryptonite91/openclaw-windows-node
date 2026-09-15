@@ -71,7 +71,23 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
-    public void Project_KeepsRowKeyStableWhenStandaloneToolBecomesGroup()
+    public void Project_SingleToolUsesStandaloneToolNamespace()
+    {
+        var row = ChatToolActivityPresentation.Project(
+            [Tool("e5", "powershell")],
+            "session",
+            9).Single();
+
+        Assert.False(row.IsActivityGroup);
+        Assert.Equal("e5", row.Entry?.Id);
+        Assert.Equal("thread:session|generation:9|tool:e5", row.Key);
+        Assert.NotEqual(
+            ChatToolActivityPresentation.ActivityKey("session", 9, "e5"),
+            row.Key);
+    }
+
+    [Fact]
+    public void Project_ChangesRowKeyWhenStandaloneToolBecomesGroup()
     {
         var standalone = ChatToolActivityPresentation.Project(
             [Tool("first", "powershell")],
@@ -84,7 +100,122 @@ public sealed class ChatToolActivityPresentationTests
 
         Assert.False(standalone.IsActivityGroup);
         Assert.True(grouped.IsActivityGroup);
-        Assert.Equal(standalone.Key, grouped.Key);
+        Assert.Equal("thread:session|generation:9|tool:first", standalone.Key);
+        Assert.Equal("thread:session|generation:9|activity:first", grouped.Key);
+        Assert.NotEqual(standalone.Key, grouped.Key);
+    }
+
+    [Fact]
+    public void Project_KeepsActivityKeyAcrossNonGroupingUpdates()
+    {
+        var before = ChatToolActivityPresentation.Project(
+            [
+                Tool("e5", "powershell", Args(("command", "Get-Date")), ChatToolCallStatus.InProgress),
+                Tool("e6", "read_file", Args(("path", "before.txt"))),
+            ],
+            "session",
+            9).Single();
+        var after = ChatToolActivityPresentation.Project(
+            [
+                Tool("e5", "powershell", Args(("command", "Get-Location"))) with
+                {
+                    Text = "updated input",
+                    ToolOutput = "updated output",
+                },
+                Tool("e6", "read_file", Args(("path", "after.txt"))) with
+                {
+                    ToolOutput = "new contents",
+                },
+            ],
+            "session",
+            9).Single();
+
+        Assert.True(before.IsActivityGroup);
+        Assert.True(after.IsActivityGroup);
+        Assert.Equal("thread:session|generation:9|activity:e5", before.Key);
+        Assert.Equal(before.Key, after.Key);
+    }
+
+    [Fact]
+    public void Project_ChangesSemanticKeyWhenActivitySplitsOnError()
+    {
+        var grouped = ChatToolActivityPresentation.Project(
+            [Tool("e5", "powershell"), Tool("e6", "read_file")],
+            "session",
+            9).Single();
+        var split = ChatToolActivityPresentation.Project(
+            [
+                Tool("e5", "powershell", result: ChatToolCallStatus.Error),
+                Tool("e6", "read_file"),
+            ],
+            "session",
+            9);
+
+        Assert.True(grouped.IsActivityGroup);
+        Assert.Equal("thread:session|generation:9|activity:e5", grouped.Key);
+        Assert.Equal(2, split.Count);
+        Assert.All(split, static row => Assert.False(row.IsActivityGroup));
+        Assert.Equal(
+            [
+                "thread:session|generation:9|tool:e5",
+                "thread:session|generation:9|tool:e6",
+            ],
+            split.Select(static row => row.Key));
+        Assert.DoesNotContain(split, row => string.Equals(row.Key, grouped.Key, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Project_ProducesUniqueKeysAcrossSemanticNamespaces()
+    {
+        var rows = ChatToolActivityPresentation.Project(
+            [
+                Item("user", ChatTimelineItemKind.User),
+                Tool("single", "powershell"),
+                Item("assistant", ChatTimelineItemKind.Assistant),
+                Tool("failed", "memory_search", result: ChatToolCallStatus.Error),
+                Item("status", ChatTimelineItemKind.Status),
+                Tool("group-first", "read_file"),
+                Tool("group-second", "write_file"),
+            ],
+            "session",
+            9);
+
+        Assert.Contains(rows, static row => row.Key.Contains("|kind:User|id:user", StringComparison.Ordinal));
+        Assert.Contains(rows, static row => row.Key.EndsWith("|tool:single", StringComparison.Ordinal));
+        Assert.Contains(rows, static row => row.Key.EndsWith("|tool:failed", StringComparison.Ordinal));
+        Assert.Contains(rows, static row => row.Key.EndsWith("|activity:group-first", StringComparison.Ordinal));
+        Assert.Equal(rows.Count, rows.Select(static row => row.Key).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void Project_PreservesSemanticKindForEverySurvivingKeyAcrossSnapshots()
+    {
+        IReadOnlyList<ChatTimelineItem>[] snapshots =
+        [
+            [Tool("e5", "powershell")],
+            [Tool("e5", "powershell"), Tool("e6", "read_file")],
+            [
+                Tool("e5", "powershell", Args(("command", "Get-Date"))),
+                Tool("e6", "read_file") with { ToolOutput = "updated" },
+            ],
+            [
+                Tool("e5", "powershell", result: ChatToolCallStatus.Error),
+                Tool("e6", "read_file"),
+            ],
+            [Tool("e5", "powershell"), Tool("e6", "read_file")],
+        ];
+        var semanticKindsByKey = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+        foreach (var snapshot in snapshots)
+        {
+            foreach (var row in ChatToolActivityPresentation.Project(snapshot, "session", 9))
+            {
+                if (semanticKindsByKey.TryGetValue(row.Key, out var wasActivityGroup))
+                    Assert.Equal(wasActivityGroup, row.IsActivityGroup);
+                else
+                    semanticKindsByKey.Add(row.Key, row.IsActivityGroup);
+            }
+        }
     }
 
     [Fact]

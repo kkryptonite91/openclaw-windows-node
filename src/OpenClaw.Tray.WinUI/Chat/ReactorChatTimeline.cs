@@ -182,7 +182,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     public static string RowKey(ChatTimelinePresentationContext props, ChatTimelineItem entry) =>
         entry.Kind == ChatTimelineItemKind.ToolCall
-            ? ChatToolActivityPresentation.ActivityKey(
+            ? ChatToolActivityPresentation.ToolKey(
                 props.SessionId,
                 props.TimelineGeneration,
                 entry.Id)
