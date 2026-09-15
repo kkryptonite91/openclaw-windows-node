@@ -28,6 +28,9 @@ namespace OpenClawTray.Chat;
 ///     <see cref="OpenClawTray.Services.Logger.Debug(string)"/> calls so the
 ///     per-S4 total equals <c>1 + entries.Count</c> matching the count the
 ///     old <c>33ca38a</c> full logger produced for a 7-entry fixture.
+///     <c>D2</c> variant keeps the same 8 calls per S4 boundary but the
+///     seven extra logs become runtime-constructed 24-field joined strings
+///     (allocation + string-formatting weight), with no Timeline access.
 ///
 /// Intentionally narrow scope:
 ///   - supports S1, S2, S3 and S4 only;
@@ -159,14 +162,23 @@ internal static class ChatHistoryReducerSnapshotLogger
     /// call at the <c>ReactorChatTimeline</c> / <c>BuildRows</c> /
     /// <c>ItemsView</c> boundary without restoring any other instrumentation.
     ///
-    /// This <c>D1</c> variant additionally issues seven fixed, payload-free
-    /// <see cref="OpenClawTray.Services.Logger.Debug(string)"/> calls so the
-    /// per-S4 total matches the count the old full <c>33ca38a</c> logger
-    /// produced for a 7-entry fixture (1 outer + 7 per-entry logs). The seven
-    /// extra calls use only string-literal content, never read the timeline,
-    /// never touch <c>Entries</c>, never serialize JSON, and never allocate a
-    /// string array. The only variable under test is the
-    /// <c>Logger.Debug</c> / channel-enqueue call count.
+    /// This <c>D2</c> variant retains the <c>D1</c> call count
+    /// (1 outer log + 7 extra logs per S4 boundary, total = 8 Logger.Debug
+    /// calls per render) but replaces the seven fixed payload-free literals
+    /// with seven runtime-constructed wide log strings. Each of the seven
+    /// extra iterations:
+    ///   - allocates a 24-element <see cref="string"/> array,
+    ///   - calls <see cref="long.ToString(System.IFormatProvider)"/> on the
+    ///     cached <c>historyRevision</c>,
+    ///   - calls <see cref="int.ToString(System.IFormatProvider)"/> on the
+    ///     loop counter <c>i</c>,
+    ///   - calls <see cref="string.Join(string, string[])"/> to produce one
+    ///     large joined string,
+    ///   - calls <see cref="OpenClawTray.Services.Logger.Debug(string)"/>
+    ///     on the result.
+    /// No Timeline / Entries / ChatTimelineItem access. No JSON. No LINQ.
+    /// No <c>RuntimeHelpers</c>. The only variable under test is the
+    /// runtime allocation + string-formatting weight.
     /// </summary>
     public static void LogS4BeforeBuildRows(long historyRevision)
     {
@@ -175,13 +187,39 @@ internal static class ChatHistoryReducerSnapshotLogger
             "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "build_rows_pending=true",
         });
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x1");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x2");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x3");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x4");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x5");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x6");
-        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x7");
+        for (int i = 0; i < 7; i++)
+        {
+            var hrText = historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var idxText = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var payload = new[]
+            {
+                "CHAT_PERTURB",
+                "stage=S4d2",
+                "source=ReactorChatTimeline.Render",
+                "revision=" + hrText,
+                "entries=7",
+                "summary=idx=" + idxText,
+                "entryId=null",
+                "toolName=null",
+                "isHistoryReplay=null",
+                "text=null",
+                "toolArgs=null",
+                "toolCallId=null",
+                "correlationIds=null",
+                "identityStrength=null",
+                "toolResult=null",
+                "toolOutput=null",
+                "toolRunId=null",
+                "status=ok",
+                "srcEntriesRef=0x0",
+                "presEntriesRef=0x0",
+                "srcEntryRef=0x0",
+                "presEntryRef=0x0",
+                "k1=v",
+                "k2=v",
+            };
+            OpenClawTray.Services.Logger.Debug(string.Join("|", payload));
+        }
     }
     private static string ClassifyEventType(ChatEvent evt)
     {
