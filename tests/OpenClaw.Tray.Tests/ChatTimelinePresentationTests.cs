@@ -192,19 +192,29 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
         Assert.Contains("itemsView.StartBringItemIntoView(", binding);
+        Assert.Contains("itemsView.ScrollView?.Content as WinUIItemsRepeater", binding);
+        Assert.Contains("repeater.TryGetElement(_attemptRequest.Index)", binding);
+        Assert.Contains("repeater.GetElementIndex(candidate)", binding);
+        Assert.Contains("repeater.ElementPrepared += OnElementPrepared", binding);
+        Assert.Contains("repeater.ElementClearing += OnElementClearing", binding);
+        Assert.Contains("repeater.ElementIndexChanged += OnElementIndexChanged", binding);
+        Assert.Contains("_candidateHasPostCaptureLayout = true", binding);
+        Assert.Contains("CapturedGeneration: capturedGeneration", binding);
+        Assert.Contains("CurrentGeneration: _reconciliationGeneration", binding);
+        Assert.Contains("RealizedTailNavigationGuard.CanExecute(guardState)", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
-        Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
-        Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
         Assert.Contains("_itemCount = itemCount", binding);
-        Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
         Assert.Contains("itemsView.Loaded -= OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated -= OnLayoutUpdated", binding);
+        Assert.Contains("_attemptRepeater.ElementPrepared -= OnElementPrepared", binding);
+        Assert.Contains("_attemptRepeater.ElementClearing -= OnElementClearing", binding);
+        Assert.Contains("_attemptRepeater.ElementIndexChanged -= OnElementIndexChanged", binding);
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
@@ -215,6 +225,16 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ReactorStreamingTailState", binding);
         Assert.DoesNotContain("QueueBottomAnchoringUpdate", binding);
         Assert.DoesNotContain("ApplyBottomAnchoring", binding);
+        Assert.Equal(1, binding.Split("itemsView.DispatcherQueue.TryEnqueue", StringSplitOptions.None).Length - 1);
+
+        var updateStart = binding.IndexOf("public UIElement Update(", StringComparison.Ordinal);
+        var reconcile = binding.IndexOf("context.ReconcileChild(", updateStart, StringComparison.Ordinal);
+        var generationAdvance = binding.IndexOf("positioner.ReconciliationCompleted();", reconcile, StringComparison.Ordinal);
+        Assert.True(updateStart >= 0 && reconcile > updateStart && generationAdvance > reconcile);
+
+        var finalGuard = binding.IndexOf("RealizedTailNavigationGuard.CanExecute(guardState)", StringComparison.Ordinal);
+        var startBring = binding.IndexOf("itemsView.StartBringItemIntoView(", StringComparison.Ordinal);
+        Assert.True(finalGuard >= 0 && startBring > finalGuard);
 
         var viewChangedStart = binding.IndexOf("private void OnViewChanged", StringComparison.Ordinal);
         var tailRequestStart = binding.IndexOf("private void QueueTailRequest", viewChangedStart, StringComparison.Ordinal);
@@ -264,6 +284,195 @@ public sealed class ChatTimelinePresentationTests
             currentTailIndex: 1,
             currentDisplayedTailKey: "assistant-2",
             itemCount: 1));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsUnrealizedTarget()
+    {
+        var state = ValidRealizedTailGuardState() with
+        {
+            TargetRealized = false,
+            CurrentElementMatchesCandidate = false,
+            CurrentElementIndex = -1,
+        };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_AllowsValidTarget()
+    {
+        Assert.True(RealizedTailNavigationGuard.CanExecute(ValidRealizedTailGuardState()));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsChangedReconciliationGeneration()
+    {
+        var state = ValidRealizedTailGuardState() with { CurrentGeneration = 8 };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsStaleElementMapping()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementMatchesCandidate = false,
+        }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementIndex = 1,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsClearedOrReindexedCandidate()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CandidateInvalidated = true,
+        }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementIndex = state.Request.Index - 1,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsPreparedCandidateBeforePostCaptureLayout()
+    {
+        var state = ValidRealizedTailGuardState() with { HasPostCaptureLayout = false };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            HasPostCaptureLayout = true,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsInvalidGeometry()
+    {
+        var state = ValidRealizedTailGuardState();
+        var invalidValues = new[]
+        {
+            double.NaN,
+            double.PositiveInfinity,
+            double.NegativeInfinity,
+            0d,
+            -1d,
+        };
+
+        foreach (var invalid in invalidValues)
+        {
+            Assert.False(RealizedTailNavigationGuard.CanExecute(state with { ActualWidth = invalid }));
+            Assert.False(RealizedTailNavigationGuard.CanExecute(state with { ActualHeight = invalid }));
+        }
+
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_ConsumesAnAttemptAtMostOnce()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { AttemptCompleted = true }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_PreservesExistingStaleRequestGuards()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { CurrentVersion = 12 }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { Following = false }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { CurrentTailIndex = 1 }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentDisplayedTailKey = "assistant-2",
+        }));
+    }
+
+    [Fact]
+    public void ReactorTimeline_CleansUpRealizationHandlersOnEveryTerminalPath()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ReactorItemsViewScrollController.cs"));
+
+        Assert.Contains("private void DetachTailAttemptHandlers()", binding);
+        Assert.Contains("_attemptRepeater.ElementPrepared -= OnElementPrepared", binding);
+        Assert.Contains("_attemptRepeater.ElementClearing -= OnElementClearing", binding);
+        Assert.Contains("_attemptRepeater.ElementIndexChanged -= OnElementIndexChanged", binding);
+        Assert.Contains("private void OnUnloaded", binding);
+        Assert.Contains("public void Dispose()", binding);
+        Assert.Contains("public void ReconciliationCompleted()", binding);
+
+        var generationBody = SliceBetween(
+            binding,
+            "public void ReconciliationCompleted()",
+            "public void Request(");
+        var unloadBody = SliceBetween(
+            binding,
+            "private void OnUnloaded",
+            "private void DetachLayout");
+        var disposeBody = binding[binding.IndexOf("public void Dispose()", StringComparison.Ordinal)..];
+        var clearingBody = SliceBetween(
+            binding,
+            "private void OnElementClearing",
+            "private void OnElementIndexChanged");
+        var reindexBody = SliceBetween(
+            binding,
+            "private void OnElementIndexChanged",
+            "private bool TryCaptureCandidate");
+
+        Assert.Contains("CancelTailAttempt();", generationBody);
+        Assert.Contains("CancelTailAttempt();", unloadBody);
+        Assert.Contains("CancelTailAttempt();", disposeBody);
+        Assert.Contains("FailTailAttempt();", clearingBody);
+        Assert.Contains("FailTailAttempt();", reindexBody);
+    }
+
+    private static RealizedTailNavigationGuardState ValidRealizedTailGuardState() => new(
+        IsDisposed: false,
+        ItemsViewLoaded: true,
+        ScrollViewLoaded: true,
+        Following: true,
+        CapturedVersion: 11,
+        CurrentVersion: 11,
+        CapturedGeneration: 7,
+        CurrentGeneration: 7,
+        Request: new TailNavigationRequest(2, "assistant-3"),
+        CurrentTailIndex: 2,
+        CurrentDisplayedTailKey: "assistant-3",
+        ItemCount: 3,
+        TargetRealized: true,
+        CurrentElementMatchesCandidate: true,
+        CurrentElementIndex: 2,
+        IsExpectedElementType: true,
+        ElementLoaded: true,
+        ActualWidth: 640,
+        ActualHeight: 48,
+        HasPostCaptureLayout: true,
+        CandidateInvalidated: false,
+        AttemptCompleted: false);
+
+    private static string SliceBetween(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        return source[start..end];
     }
 
     [Fact]
