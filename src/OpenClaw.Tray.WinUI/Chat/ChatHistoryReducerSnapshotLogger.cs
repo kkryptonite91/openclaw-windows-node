@@ -24,7 +24,10 @@ namespace OpenClawTray.Chat;
 /// S4: emit a single marker record immediately before
 ///     <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries only
 ///     the cached <c>historyRevision</c> scalar; no enumeration, no payload
-///     access.
+///     access. <c>D1</c> variant adds seven fixed payload-free
+///     <see cref="OpenClawTray.Services.Logger.Debug(string)"/> calls so the
+///     per-S4 total equals <c>1 + entries.Count</c> matching the count the
+///     old <c>33ca38a</c> full logger produced for a 7-entry fixture.
 ///
 /// Intentionally narrow scope:
 ///   - supports S1, S2, S3 and S4 only;
@@ -155,6 +158,15 @@ internal static class ChatHistoryReducerSnapshotLogger
     /// presentation payload. The intent is to add a single observer-effect
     /// call at the <c>ReactorChatTimeline</c> / <c>BuildRows</c> /
     /// <c>ItemsView</c> boundary without restoring any other instrumentation.
+    ///
+    /// This <c>D1</c> variant additionally issues seven fixed, payload-free
+    /// <see cref="OpenClawTray.Services.Logger.Debug(string)"/> calls so the
+    /// per-S4 total matches the count the old full <c>33ca38a</c> logger
+    /// produced for a 7-entry fixture (1 outer + 7 per-entry logs). The seven
+    /// extra calls use only string-literal content, never read the timeline,
+    /// never touch <c>Entries</c>, never serialize JSON, and never allocate a
+    /// string array. The only variable under test is the
+    /// <c>Logger.Debug</c> / channel-enqueue call count.
     /// </summary>
     public static void LogS4BeforeBuildRows(long historyRevision)
     {
@@ -163,6 +175,13 @@ internal static class ChatHistoryReducerSnapshotLogger
             "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "build_rows_pending=true",
         });
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x1");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x2");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x3");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x4");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x5");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x6");
+        OpenClawTray.Services.Logger.Debug("CHAT_PERTURB S4x7");
     }
     private static string ClassifyEventType(ChatEvent evt)
     {
