@@ -60,6 +60,7 @@ internal static class ChatHistoryReducerSnapshotLogger
     private const string NullToken = "<null>";
     private const string PresentToken = "<present>";
     private const int MaxArgsChars = 200;
+    private const int MaxTextChars = 200;
 
     /// <summary>
     /// Emit one <c>S1</c> record for a structured history <paramref name="evt"/>
@@ -191,12 +192,16 @@ internal static class ChatHistoryReducerSnapshotLogger
         var entryCount = presentation.Entries.Count;
         var presEntriesRefHex = RefId(presentation.Entries);
         var firstEntryRefHex = entryCount > 0 ? RefId(presentation.Entries[0]) : "0";
+        var firstEntryText = entryCount > 0 && presentation.Entries[0].Text is { } firstText
+            ? Truncate(firstText, MaxTextChars)
+            : NullToken;
         Append(StageS4, new[]
         {
             "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "build_rows_pending=true",
             "presEntriesRef=0x" + presEntriesRefHex,
             "firstEntryRef=0x" + firstEntryRefHex,
+            "firstEntryText=" + firstEntryText,
         });
         var tlGen = presentation.TimelineGeneration;
         var showTools = presentation.ShowToolCalls;
@@ -221,6 +226,9 @@ internal static class ChatHistoryReducerSnapshotLogger
             var toolArgsText = entry.ToolArgs is null
                 ? "null"
                 : Truncate(SafeJson(entry.ToolArgs), MaxArgsChars);
+            var entryTextText = entry.Text is null
+                ? "null"
+                : Truncate(entry.Text, MaxTextChars);
             string correlationText;
             if (entry.ToolCorrelationIds is null)
             {
@@ -240,7 +248,7 @@ internal static class ChatHistoryReducerSnapshotLogger
                 "summary=idx=" + idxText + "|kind=" + kindText + "|id=" + idText,
                 "toolName=" + toolNameText,
                 "isHistoryReplay=null",
-                "text=null",
+                "text=" + entryTextText,
                 "toolArgs=" + toolArgsText,
                 "toolCallId=" + toolCallIdText,
                 "correlationIds=" + correlationText,
