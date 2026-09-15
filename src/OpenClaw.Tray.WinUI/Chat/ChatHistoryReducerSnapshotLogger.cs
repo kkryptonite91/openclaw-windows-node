@@ -155,68 +155,90 @@ internal static class ChatHistoryReducerSnapshotLogger
 
     /// <summary>
     /// Emit one <c>S4</c> marker record immediately before
-    /// <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries only
-    /// the cached <c>historyRevision</c> scalar; does not read
-    /// <c>props.Timeline.Entries</c>, does not enumerate, does not access the
-    /// presentation payload. The intent is to add a single observer-effect
-    /// call at the <c>ReactorChatTimeline</c> / <c>BuildRows</c> /
-    /// <c>ItemsView</c> boundary without restoring any other instrumentation.
-    ///
-    /// This <c>D2</c> variant retains the <c>D1</c> call count
-    /// (1 outer log + 7 extra logs per S4 boundary, total = 8 Logger.Debug
-    /// calls per render) but replaces the seven fixed payload-free literals
-    /// with seven runtime-constructed wide log strings. Each of the seven
-    /// extra iterations:
-    ///   - allocates a 24-element <see cref="string"/> array,
-    ///   - calls <see cref="long.ToString(System.IFormatProvider)"/> on the
-    ///     cached <c>historyRevision</c>,
-    ///   - calls <see cref="int.ToString(System.IFormatProvider)"/> on the
-    ///     loop counter <c>i</c>,
-    ///   - calls <see cref="string.Join(string, string[])"/> to produce one
-    ///     large joined string,
-    ///   - calls <see cref="OpenClawTray.Services.Logger.Debug(string)"/>
-    ///     on the result.
-    /// No Timeline / Entries / ChatTimelineItem access. No JSON. No LINQ.
-    /// No <c>RuntimeHelpers</c>. The only variable under test is the
-    /// runtime allocation + string-formatting weight.
+    /// <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries the
+    /// cached <c>historyRevision</c> scalar plus a read-only walk of the
+    /// <c>presentation</c> object. The <c>D3</c> variant:
+    ///   - reads <c>presentation.Entries.Count</c>,
+    ///   - reads <c>presentation.TimelineGeneration</c>,
+    ///   - reads <c>presentation.ShowToolCalls</c>,
+    ///   - walks <c>presentation.Entries</c> via indexer (one full
+    ///     <c>for</c> loop, no LINQ, no deferred enumeration),
+    ///   - per entry reads ordinary properties:
+    ///     <c>Kind</c>, <c>Id</c>, <c>ToolName</c>, <c>ToolCallId</c>,
+    ///     <c>ToolIdentityStrength</c>, <c>ToolRunId</c>, <c>ToolOutput</c>,
+    ///     <c>ToolResult</c>, <c>ToolArgs</c> (reference only, never
+    ///     <c>ToJsonString</c>), <c>ToolCorrelationIds</c>
+    ///     (<see cref="string.Join(string, IEnumerable{string})"/> only when
+    ///     non-null),
+    ///   - emits one <c>Logger.Debug</c> call per entry (matching
+    ///     <c>1 + Entries.Count</c>; no hard-coded count).
+    /// No <c>SafeJson</c>, no <c>JsonNode.ToJsonString()</c>, no LINQ, no
+    /// new logger, no sleep, no GC.Collect, no async. BuildRows body and
+    /// call-site line position are unchanged.
     /// </summary>
-    public static void LogS4BeforeBuildRows(long historyRevision)
+    public static void LogS4BeforeBuildRows(
+        long historyRevision,
+        ChatTimelinePresentationContext presentation)
     {
         Append(StageS4, new[]
         {
             "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "build_rows_pending=true",
         });
-        for (int i = 0; i < 7; i++)
+        var entryCount = presentation.Entries.Count;
+        var tlGen = presentation.TimelineGeneration;
+        var showTools = presentation.ShowToolCalls;
+        for (int i = 0; i < entryCount; i++)
         {
+            var entry = presentation.Entries[i];
             var hrText = historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var idxText = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var entryCountText = entryCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var tlGenText = tlGen.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var showToolsText = showTools ? "true" : "false";
+            var kindText = entry.Kind.ToString();
+            var idText = entry.Id ?? "null";
+            var toolNameText = entry.ToolName ?? "null";
+            var toolCallIdText = entry.ToolCallId ?? "null";
+            var identityText = entry.ToolIdentityStrength.ToString();
+            var toolRunIdText = entry.ToolRunId ?? "null";
+            var toolOutputText = entry.ToolOutput ?? "null";
+            var toolResultText = entry.ToolResult?.ToString() ?? "null";
+            var toolArgsPresentText = entry.ToolArgs is null ? "false" : "true";
+            string correlationText;
+            if (entry.ToolCorrelationIds is null)
+            {
+                correlationText = toolCallIdText;
+            }
+            else
+            {
+                correlationText = string.Join(",", entry.ToolCorrelationIds);
+            }
             var payload = new[]
             {
                 "CHAT_PERTURB",
-                "stage=S4d2",
+                "stage=S4d3",
                 "source=ReactorChatTimeline.Render",
                 "revision=" + hrText,
-                "entries=7",
-                "summary=idx=" + idxText,
-                "entryId=null",
-                "toolName=null",
+                "entries=" + entryCountText,
+                "summary=idx=" + idxText + "|kind=" + kindText + "|id=" + idText,
+                "toolName=" + toolNameText,
                 "isHistoryReplay=null",
                 "text=null",
-                "toolArgs=null",
-                "toolCallId=null",
-                "correlationIds=null",
-                "identityStrength=null",
-                "toolResult=null",
-                "toolOutput=null",
-                "toolRunId=null",
+                "toolArgs_present=" + toolArgsPresentText,
+                "toolCallId=" + toolCallIdText,
+                "correlationIds=" + correlationText,
+                "identityStrength=" + identityText,
+                "toolResult=" + toolResultText,
+                "toolOutput=" + toolOutputText,
+                "toolRunId=" + toolRunIdText,
                 "status=ok",
-                "srcEntriesRef=0x0",
-                "presEntriesRef=0x0",
-                "srcEntryRef=0x0",
-                "presEntryRef=0x0",
+                "tlGen=" + tlGenText,
+                "showTools=" + showToolsText,
                 "k1=v",
                 "k2=v",
+                "k3=v",
+                "k4=v",
             };
             OpenClawTray.Services.Logger.Debug(string.Join("|", payload));
         }
