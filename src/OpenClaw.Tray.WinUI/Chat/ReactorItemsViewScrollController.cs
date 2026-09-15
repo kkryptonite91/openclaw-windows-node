@@ -266,11 +266,6 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _following = true;
-        itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
-        {
-            AnimationDesired = false,
-            VerticalAlignmentRatio = 1.0,
-        });
         return true;
     }
 
