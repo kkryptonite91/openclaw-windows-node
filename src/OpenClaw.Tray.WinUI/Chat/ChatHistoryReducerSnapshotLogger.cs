@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Json.Nodes;
 using OpenClaw.Chat;
 using OpenClawTray.Services;
 
@@ -31,6 +32,9 @@ namespace OpenClawTray.Chat;
 ///     <c>D2</c> variant keeps the same 8 calls per S4 boundary but the
 ///     seven extra logs become runtime-constructed 24-field joined strings
 ///     (allocation + string-formatting weight), with no Timeline access.
+///     <c>D3</c> adds the Timeline Entries indexer walk plus per-entry
+///     property reads (no JSON). <c>D4</c> is D3 plus <c>SafeJson</c> /
+///     <c>JsonNode.ToJsonString()</c> serialization of non-null ToolArgs.
 ///
 /// Intentionally narrow scope:
 ///   - supports S1, S2, S3 and S4 only;
@@ -54,6 +58,7 @@ internal static class ChatHistoryReducerSnapshotLogger
     private const string StageS4 = "S4";
     private const string NullToken = "<null>";
     private const string PresentToken = "<present>";
+    private const int MaxArgsChars = 200;
 
     /// <summary>
     /// Emit one <c>S1</c> record for a structured history <paramref name="evt"/>
@@ -157,7 +162,8 @@ internal static class ChatHistoryReducerSnapshotLogger
     /// Emit one <c>S4</c> marker record immediately before
     /// <c>ReactorChatTimeline.Render</c> calls <c>BuildRows</c>. Carries the
     /// cached <c>historyRevision</c> scalar plus a read-only walk of the
-    /// <c>presentation</c> object. The <c>D3</c> variant:
+    /// <c>presentation</c> object. The <c>D3</c> variant, plus the <c>D4</c>
+    /// ToolArgs serialization:
     ///   - reads <c>presentation.Entries.Count</c>,
     ///   - reads <c>presentation.TimelineGeneration</c>,
     ///   - reads <c>presentation.ShowToolCalls</c>,
@@ -166,14 +172,15 @@ internal static class ChatHistoryReducerSnapshotLogger
     ///   - per entry reads ordinary properties:
     ///     <c>Kind</c>, <c>Id</c>, <c>ToolName</c>, <c>ToolCallId</c>,
     ///     <c>ToolIdentityStrength</c>, <c>ToolRunId</c>, <c>ToolOutput</c>,
-    ///     <c>ToolResult</c>, <c>ToolArgs</c> (reference only, never
-    ///     <c>ToJsonString</c>), <c>ToolCorrelationIds</c>
+    ///     <c>ToolResult</c>, <c>ToolArgs</c> (<c>SafeJson</c> /
+    ///     <c>JsonNode.ToJsonString()</c> when non-null), <c>ToolCorrelationIds</c>
     ///     (<see cref="string.Join(string, IEnumerable{string})"/> only when
     ///     non-null),
     ///   - emits one <c>Logger.Debug</c> call per entry (matching
     ///     <c>1 + Entries.Count</c>; no hard-coded count).
-    /// No <c>SafeJson</c>, no <c>JsonNode.ToJsonString()</c>, no LINQ, no
-    /// new logger, no sleep, no GC.Collect, no async. BuildRows body and
+    /// The <c>D4</c> variant is D3 plus <c>SafeJson</c> /
+    /// <c>JsonNode.ToJsonString()</c> on non-null <c>ToolArgs</c>; no LINQ,
+    /// no new logger, no sleep, no GC.Collect, no async. BuildRows body and
     /// call-site line position are unchanged.
     /// </summary>
     public static void LogS4BeforeBuildRows(
@@ -204,7 +211,9 @@ internal static class ChatHistoryReducerSnapshotLogger
             var toolRunIdText = entry.ToolRunId ?? "null";
             var toolOutputText = entry.ToolOutput ?? "null";
             var toolResultText = entry.ToolResult?.ToString() ?? "null";
-            var toolArgsPresentText = entry.ToolArgs is null ? "false" : "true";
+            var toolArgsText = entry.ToolArgs is null
+                ? "null"
+                : Truncate(SafeJson(entry.ToolArgs), MaxArgsChars);
             string correlationText;
             if (entry.ToolCorrelationIds is null)
             {
@@ -217,7 +226,7 @@ internal static class ChatHistoryReducerSnapshotLogger
             var payload = new[]
             {
                 "CHAT_PERTURB",
-                "stage=S4d3",
+                "stage=S4d4",
                 "source=ReactorChatTimeline.Render",
                 "revision=" + hrText,
                 "entries=" + entryCountText,
@@ -225,7 +234,7 @@ internal static class ChatHistoryReducerSnapshotLogger
                 "toolName=" + toolNameText,
                 "isHistoryReplay=null",
                 "text=null",
-                "toolArgs_present=" + toolArgsPresentText,
+                "toolArgs=" + toolArgsText,
                 "toolCallId=" + toolCallIdText,
                 "correlationIds=" + correlationText,
                 "identityStrength=" + identityText,
@@ -281,5 +290,26 @@ internal static class ChatHistoryReducerSnapshotLogger
             sb.Append(' ').Append(fields[i]);
         }
         Logger.Debug(sb.ToString());
+    }
+
+    /// <summary>
+    /// Serialize a <see cref="JsonObject"/> tool-argument payload via
+    /// <c>ToJsonString()</c>. Mirrors the old <c>33ca38a</c> full logger's
+    /// <c>SafeJson</c>: the only exception protection is a catch that returns
+    /// <c>"&lt;unprintable&gt;"</c>. This is the sole D4 behavior added on top
+    /// of the D3 per-entry walk; the serialized text replaces the D3
+    /// <c>toolArgs_present</c> boolean field.
+    /// </summary>
+    private static string SafeJson(JsonObject obj)
+    {
+        try { return obj.ToJsonString(); }
+        catch { return "<unprintable>"; }
+    }
+
+    private static string Truncate(string value, int max)
+    {
+        if (value.Length <= max)
+            return value.Replace('\n', ' ').Replace('\r', ' ');
+        return string.Concat(value.AsSpan(0, max).ToString(), "...").Replace('\n', ' ').Replace('\r', ' ');
     }
 }
