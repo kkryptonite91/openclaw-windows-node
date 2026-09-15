@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenClaw.Chat;
@@ -187,17 +188,23 @@ internal static class ChatHistoryReducerSnapshotLogger
         long historyRevision,
         ChatTimelinePresentationContext presentation)
     {
+        var entryCount = presentation.Entries.Count;
+        var presEntriesRefHex = RefId(presentation.Entries);
+        var firstEntryRefHex = entryCount > 0 ? RefId(presentation.Entries[0]) : "0";
         Append(StageS4, new[]
         {
             "history_revision=" + historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "build_rows_pending=true",
+            "presEntriesRef=0x" + presEntriesRefHex,
+            "firstEntryRef=0x" + firstEntryRefHex,
         });
-        var entryCount = presentation.Entries.Count;
         var tlGen = presentation.TimelineGeneration;
         var showTools = presentation.ShowToolCalls;
         for (int i = 0; i < entryCount; i++)
         {
             var entry = presentation.Entries[i];
+            var iterPresEntriesRefHex = RefId(presentation.Entries);
+            var iterEntryRefHex = RefId(entry);
             var hrText = historyRevision.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var idxText = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var entryCountText = entryCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -244,8 +251,8 @@ internal static class ChatHistoryReducerSnapshotLogger
                 "status=ok",
                 "tlGen=" + tlGenText,
                 "showTools=" + showToolsText,
-                "k1=v",
-                "k2=v",
+                "k1=0x" + iterPresEntriesRefHex,
+                "k2=0x" + iterEntryRefHex,
                 "k3=v",
                 "k4=v",
             };
@@ -311,5 +318,26 @@ internal static class ChatHistoryReducerSnapshotLogger
         if (value.Length <= max)
             return value.Replace('\n', ' ').Replace('\r', ' ');
         return string.Concat(value.AsSpan(0, max).ToString(), "...").Replace('\n', ' ').Replace('\r', ' ');
+    }
+
+    /// <summary>
+    /// Reference identity observation. Mirrors the 33ca38a full logger's
+    /// RefId: returns "0" for null, "?" if <c>RuntimeHelpers.GetHashCode</c>
+    /// throws, otherwise the uppercase-hex string form of the hash.
+    /// D5 single-variable experiment: this is the only new runtime behavior
+    /// added on top of D4 in the S4 path.
+    /// </summary>
+    private static string RefId(object? reference)
+    {
+        if (reference is null)
+            return "0";
+        try
+        {
+            return RuntimeHelpers.GetHashCode(reference).ToString("X");
+        }
+        catch
+        {
+            return "?";
+        }
     }
 }
