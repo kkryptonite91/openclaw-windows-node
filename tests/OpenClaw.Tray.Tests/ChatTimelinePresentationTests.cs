@@ -237,7 +237,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.True(finalGuard >= 0 && startBring > finalGuard);
 
         var viewChangedStart = binding.IndexOf("private void OnViewChanged", StringComparison.Ordinal);
-        var tailRequestStart = binding.IndexOf("private void QueueTailRequest", viewChangedStart, StringComparison.Ordinal);
+        var tailRequestStart = binding.IndexOf("private void AttachAttemptRepeater", viewChangedStart, StringComparison.Ordinal);
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
