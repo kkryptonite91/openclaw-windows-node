@@ -664,15 +664,21 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_UsesCanonicalToolActivityKeyForStandaloneAndGroupedRows()
+    public void ReactorTimeline_UsesDistinctKeysForStandaloneToolsAndGroupedActivities()
     {
         var timeline = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var activityPresentation = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ChatToolActivityPresentation.cs"));
 
         Assert.Contains("entry.Kind == ChatTimelineItemKind.ToolCall", timeline);
-        Assert.Contains("ChatToolActivityPresentation.ActivityKey(", timeline);
+        Assert.Contains("ChatToolActivityPresentation.ToolKey(", timeline);
+        Assert.DoesNotContain("ChatToolActivityPresentation.ActivityKey(", timeline);
         Assert.Contains("ReactorChatTimeline.RowKey(props.Timeline, entry)", timeline);
+        Assert.Contains("? ToolKey(sessionId, timelineGeneration, entry.Id)", activityPresentation);
+        Assert.Contains("ActivityKey(sessionId, timelineGeneration, tools[0].Id)", activityPresentation);
     }
 
     [Fact]
