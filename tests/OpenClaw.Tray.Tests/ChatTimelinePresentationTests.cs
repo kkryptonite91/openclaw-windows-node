@@ -1,9 +1,134 @@
+using OpenClaw.Chat;
 using OpenClawTray.Chat;
+using System.Collections.Immutable;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatTimelinePresentationTests
 {
+    [Fact]
+    public void HistoryExecProjection_IsolatedFromBusinessTimelineAndStable()
+    {
+        var args = new JsonObject { ["query"] = "test" };
+        var correlationIds = ImmutableHashSet.Create("call-1");
+        IReadOnlyList<ChatTimelineItem> source =
+        [
+            new ChatTimelineItem(
+                "e1",
+                ChatTimelineItemKind.ToolCall,
+                "test",
+                ToolName: "exec",
+                ToolResult: ChatToolCallStatus.Success,
+                ToolOutput: "OK",
+                IntentSummary: "test",
+                ToolArgs: args,
+                ToolCallId: "call-1",
+                ToolIdentityStrength: ChatToolIdentityStrength.Explicit,
+                ToolCorrelationIds: correlationIds),
+        ];
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e1"] = new(null, null, IsHistoryReplay: true),
+        };
+        var cache = new ChatHistoryReplayPresentationCache();
+
+        var first = cache.Project(source, metadata, historyRevision: 7);
+        var second = cache.Project(source, metadata, historyRevision: 7);
+
+        Assert.Equal("exec", source[0].ToolName);
+        Assert.NotSame(source, first);
+        Assert.Same(first, second);
+        var presentation = Assert.Single(first);
+        Assert.Equal("Command", presentation.ToolName);
+        Assert.NotSame(source[0], presentation);
+        Assert.Same(presentation, second[0]);
+        Assert.Equal(source[0].Id, presentation.Id);
+        Assert.Equal(source[0].Text, presentation.Text);
+        Assert.Same(args, presentation.ToolArgs);
+        Assert.Equal(source[0].ToolCallId, presentation.ToolCallId);
+        Assert.Same(correlationIds, presentation.ToolCorrelationIds);
+        Assert.Equal(source[0].ToolIdentityStrength, presentation.ToolIdentityStrength);
+        Assert.Equal(source[0].ToolResult, presentation.ToolResult);
+        Assert.Equal(source[0].ToolOutput, presentation.ToolOutput);
+        Assert.Equal(source[0].ToolRunId, presentation.ToolRunId);
+
+        var afterRevisionChange = cache.Project(source, metadata, historyRevision: 8);
+        Assert.NotSame(first, afterRevisionChange);
+        Assert.NotSame(presentation, afterRevisionChange[0]);
+
+        var replacementSource = source.ToArray();
+        var afterSourceChange = cache.Project(replacementSource, metadata, historyRevision: 8);
+        Assert.NotSame(afterRevisionChange, afterSourceChange);
+        Assert.NotSame(afterRevisionChange[0], afterSourceChange[0]);
+    }
+
+    [Fact]
+    public void HistoryMemorySearchAndLiveExec_KeepBusinessIdentityAndReference()
+    {
+        var cache = new ChatHistoryReplayPresentationCache();
+        IReadOnlyList<ChatTimelineItem> historyMemorySearch =
+        [
+            new("e1", ChatTimelineItemKind.ToolCall, "test", ToolName: "memory_search"),
+        ];
+        IReadOnlyList<ChatTimelineItem> liveExec =
+        [
+            new("e2", ChatTimelineItemKind.ToolCall, "test", ToolName: "exec"),
+        ];
+        var historyMetadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e1"] = new(null, null, IsHistoryReplay: true),
+        };
+        var liveMetadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["e2"] = new(null, null),
+        };
+
+        var projectedHistoryMemorySearch = cache.Project(
+            historyMemorySearch,
+            historyMetadata,
+            historyRevision: 1);
+        var projectedLiveExec = cache.Project(
+            liveExec,
+            liveMetadata,
+            historyRevision: 2);
+
+        Assert.Same(historyMemorySearch, projectedHistoryMemorySearch);
+        Assert.Same(historyMemorySearch[0], projectedHistoryMemorySearch[0]);
+        Assert.Equal("memory_search", projectedHistoryMemorySearch[0].ToolName);
+        Assert.Same(liveExec, projectedLiveExec);
+        Assert.Same(liveExec[0], projectedLiveExec[0]);
+        Assert.Equal("exec", projectedLiveExec[0].ToolName);
+    }
+
+    [Fact]
+    public void HistoryExecPresentation_SourceContractPreservesBusinessIdentity()
+    {
+        var loader = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatHistoryLoader.cs"));
+        var reducer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Chat",
+            "ChatTimelineReducer.cs"));
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+
+        Assert.Contains("IsHistoryReplay: true", loader);
+        Assert.DoesNotContain("memory_search", loader);
+        Assert.DoesNotContain("\"exec\"", reducer);
+        Assert.Contains("new ChatHistoryReplayPresentationCache()", root);
+        Assert.Contains("presentationEntries,", root);
+    }
+
     [Fact]
     public void ReactorTimeline_UsesNonSelectableItemsViewContainersAndAnnotatedScrollBar()
     {
@@ -67,19 +192,29 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.LayoutUpdated += OnLayoutUpdated", binding);
         Assert.Contains("itemsView.DispatcherQueue.TryEnqueue", binding);
         Assert.Contains("itemsView.StartBringItemIntoView(", binding);
+        Assert.Contains("itemsView.ScrollView?.Content as WinUIItemsRepeater", binding);
+        Assert.Contains("repeater.TryGetElement(_attemptRequest.Index)", binding);
+        Assert.Contains("repeater.GetElementIndex(candidate)", binding);
+        Assert.Contains("repeater.ElementPrepared += OnElementPrepared", binding);
+        Assert.Contains("repeater.ElementClearing += OnElementClearing", binding);
+        Assert.Contains("repeater.ElementIndexChanged += OnElementIndexChanged", binding);
+        Assert.Contains("_candidateHasPostCaptureLayout = true", binding);
+        Assert.Contains("CapturedGeneration: capturedGeneration", binding);
+        Assert.Contains("CurrentGeneration: _reconciliationGeneration", binding);
+        Assert.Contains("RealizedTailNavigationGuard.CanExecute(guardState)", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = IsNearBottom(sender)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
-        Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
-        Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
         Assert.Contains("_itemCount = itemCount", binding);
-        Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
         Assert.Contains("itemsView.Loaded -= OnLoaded", binding);
         Assert.Contains("itemsView.LayoutUpdated -= OnLayoutUpdated", binding);
+        Assert.Contains("_attemptRepeater.ElementPrepared -= OnElementPrepared", binding);
+        Assert.Contains("_attemptRepeater.ElementClearing -= OnElementClearing", binding);
+        Assert.Contains("_attemptRepeater.ElementIndexChanged -= OnElementIndexChanged", binding);
         Assert.DoesNotContain("ChangeView", binding);
         Assert.DoesNotContain("UpdateLayout", binding);
         Assert.DoesNotContain("TailSettle", binding);
@@ -90,9 +225,19 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ReactorStreamingTailState", binding);
         Assert.DoesNotContain("QueueBottomAnchoringUpdate", binding);
         Assert.DoesNotContain("ApplyBottomAnchoring", binding);
+        Assert.Equal(1, binding.Split("itemsView.DispatcherQueue.TryEnqueue", StringSplitOptions.None).Length - 1);
+
+        var updateStart = binding.IndexOf("public UIElement Update(", StringComparison.Ordinal);
+        var reconcile = binding.IndexOf("context.ReconcileChild(", updateStart, StringComparison.Ordinal);
+        var generationAdvance = binding.IndexOf("positioner.ReconciliationCompleted();", reconcile, StringComparison.Ordinal);
+        Assert.True(updateStart >= 0 && reconcile > updateStart && generationAdvance > reconcile);
+
+        var finalGuard = binding.IndexOf("RealizedTailNavigationGuard.CanExecute(guardState)", StringComparison.Ordinal);
+        var startBring = binding.IndexOf("itemsView.StartBringItemIntoView(", StringComparison.Ordinal);
+        Assert.True(finalGuard >= 0 && startBring > finalGuard);
 
         var viewChangedStart = binding.IndexOf("private void OnViewChanged", StringComparison.Ordinal);
-        var tailRequestStart = binding.IndexOf("private void QueueTailRequest", viewChangedStart, StringComparison.Ordinal);
+        var tailRequestStart = binding.IndexOf("private void AttachAttemptRepeater", viewChangedStart, StringComparison.Ordinal);
         var viewChanged = binding[viewChangedStart..tailRequestStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
@@ -139,6 +284,195 @@ public sealed class ChatTimelinePresentationTests
             currentTailIndex: 1,
             currentDisplayedTailKey: "assistant-2",
             itemCount: 1));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsUnrealizedTarget()
+    {
+        var state = ValidRealizedTailGuardState() with
+        {
+            TargetRealized = false,
+            CurrentElementMatchesCandidate = false,
+            CurrentElementIndex = -1,
+        };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_AllowsValidTarget()
+    {
+        Assert.True(RealizedTailNavigationGuard.CanExecute(ValidRealizedTailGuardState()));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsChangedReconciliationGeneration()
+    {
+        var state = ValidRealizedTailGuardState() with { CurrentGeneration = 8 };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsStaleElementMapping()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementMatchesCandidate = false,
+        }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementIndex = 1,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsClearedOrReindexedCandidate()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CandidateInvalidated = true,
+        }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentElementIndex = state.Request.Index - 1,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsPreparedCandidateBeforePostCaptureLayout()
+    {
+        var state = ValidRealizedTailGuardState() with { HasPostCaptureLayout = false };
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state));
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            HasPostCaptureLayout = true,
+        }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_RejectsInvalidGeometry()
+    {
+        var state = ValidRealizedTailGuardState();
+        var invalidValues = new[]
+        {
+            double.NaN,
+            double.PositiveInfinity,
+            double.NegativeInfinity,
+            0d,
+            -1d,
+        };
+
+        foreach (var invalid in invalidValues)
+        {
+            Assert.False(RealizedTailNavigationGuard.CanExecute(state with { ActualWidth = invalid }));
+            Assert.False(RealizedTailNavigationGuard.CanExecute(state with { ActualHeight = invalid }));
+        }
+
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_ConsumesAnAttemptAtMostOnce()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.True(RealizedTailNavigationGuard.CanExecute(state));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { AttemptCompleted = true }));
+    }
+
+    [Fact]
+    public void RealizedTailGuard_PreservesExistingStaleRequestGuards()
+    {
+        var state = ValidRealizedTailGuardState();
+
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { CurrentVersion = 12 }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { Following = false }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with { CurrentTailIndex = 1 }));
+        Assert.False(RealizedTailNavigationGuard.CanExecute(state with
+        {
+            CurrentDisplayedTailKey = "assistant-2",
+        }));
+    }
+
+    [Fact]
+    public void ReactorTimeline_CleansUpRealizationHandlersOnEveryTerminalPath()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ReactorItemsViewScrollController.cs"));
+
+        Assert.Contains("private void DetachTailAttemptHandlers()", binding);
+        Assert.Contains("_attemptRepeater.ElementPrepared -= OnElementPrepared", binding);
+        Assert.Contains("_attemptRepeater.ElementClearing -= OnElementClearing", binding);
+        Assert.Contains("_attemptRepeater.ElementIndexChanged -= OnElementIndexChanged", binding);
+        Assert.Contains("private void OnUnloaded", binding);
+        Assert.Contains("public void Dispose()", binding);
+        Assert.Contains("public void ReconciliationCompleted()", binding);
+
+        var generationBody = SliceBetween(
+            binding,
+            "public void ReconciliationCompleted()",
+            "public void Request(");
+        var unloadBody = SliceBetween(
+            binding,
+            "private void OnUnloaded",
+            "private void DetachLayout");
+        var disposeBody = binding[binding.IndexOf("public void Dispose()", StringComparison.Ordinal)..];
+        var clearingBody = SliceBetween(
+            binding,
+            "private void OnElementClearing",
+            "private void OnElementIndexChanged");
+        var reindexBody = SliceBetween(
+            binding,
+            "private void OnElementIndexChanged",
+            "private bool TryCaptureCandidate");
+
+        Assert.Contains("CancelTailAttempt();", generationBody);
+        Assert.Contains("CancelTailAttempt();", unloadBody);
+        Assert.Contains("CancelTailAttempt();", disposeBody);
+        Assert.Contains("FailTailAttempt();", clearingBody);
+        Assert.Contains("FailTailAttempt();", reindexBody);
+    }
+
+    private static RealizedTailNavigationGuardState ValidRealizedTailGuardState() => new(
+        IsDisposed: false,
+        ItemsViewLoaded: true,
+        ScrollViewLoaded: true,
+        Following: true,
+        CapturedVersion: 11,
+        CurrentVersion: 11,
+        CapturedGeneration: 7,
+        CurrentGeneration: 7,
+        Request: new TailNavigationRequest(2, "assistant-3"),
+        CurrentTailIndex: 2,
+        CurrentDisplayedTailKey: "assistant-3",
+        ItemCount: 3,
+        TargetRealized: true,
+        CurrentElementMatchesCandidate: true,
+        CurrentElementIndex: 2,
+        IsExpectedElementType: true,
+        ElementLoaded: true,
+        ActualWidth: 640,
+        ActualHeight: 48,
+        HasPostCaptureLayout: true,
+        CandidateInvalidated: false,
+        AttemptCompleted: false);
+
+    private static string SliceBetween(string source, string startMarker, string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        var end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start);
+        return source[start..end];
     }
 
     [Fact]

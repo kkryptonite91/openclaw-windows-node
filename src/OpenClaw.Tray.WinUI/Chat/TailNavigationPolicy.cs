@@ -34,6 +34,58 @@ internal static class TailNavigationPolicy
             StringComparison.Ordinal);
 }
 
+internal readonly record struct RealizedTailNavigationGuardState(
+    bool IsDisposed,
+    bool ItemsViewLoaded,
+    bool ScrollViewLoaded,
+    bool Following,
+    int CapturedVersion,
+    int CurrentVersion,
+    int CapturedGeneration,
+    int CurrentGeneration,
+    TailNavigationRequest Request,
+    int CurrentTailIndex,
+    string? CurrentDisplayedTailKey,
+    int ItemCount,
+    bool TargetRealized,
+    bool CurrentElementMatchesCandidate,
+    int CurrentElementIndex,
+    bool IsExpectedElementType,
+    bool ElementLoaded,
+    double ActualWidth,
+    double ActualHeight,
+    bool HasPostCaptureLayout,
+    bool CandidateInvalidated,
+    bool AttemptCompleted);
+
+internal static class RealizedTailNavigationGuard
+{
+    public static bool CanExecute(RealizedTailNavigationGuardState state) =>
+        !state.IsDisposed
+        && state.ItemsViewLoaded
+        && state.ScrollViewLoaded
+        && state.Following
+        && state.CapturedVersion == state.CurrentVersion
+        && state.CapturedGeneration == state.CurrentGeneration
+        && TailNavigationPolicy.CanExecute(
+            state.Request,
+            state.CurrentTailIndex,
+            state.CurrentDisplayedTailKey,
+            state.ItemCount)
+        && state.TargetRealized
+        && state.CurrentElementMatchesCandidate
+        && state.CurrentElementIndex == state.Request.Index
+        && state.IsExpectedElementType
+        && state.ElementLoaded
+        && double.IsFinite(state.ActualWidth)
+        && state.ActualWidth > 0
+        && double.IsFinite(state.ActualHeight)
+        && state.ActualHeight > 0
+        && state.HasPostCaptureLayout
+        && !state.CandidateInvalidated
+        && !state.AttemptCompleted;
+}
+
 internal sealed class TailNavigationQueue
 {
     private (int Version, TailNavigationRequest Request)? _pending;

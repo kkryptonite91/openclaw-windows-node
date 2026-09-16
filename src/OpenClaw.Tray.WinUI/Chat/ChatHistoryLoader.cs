@@ -611,7 +611,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                 AssistantContent: role == "assistant"
                     ? ChatAssistantContentProjector.Project(
                         replayPart.AssistantContentParts)
-                    : null);
+                    : null,
+                IsHistoryReplay: true);
             var text = ChatContentFormatting.TruncateForChatEntry(
                 ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
                     userProjection?.HasMediaEnvelope == true
