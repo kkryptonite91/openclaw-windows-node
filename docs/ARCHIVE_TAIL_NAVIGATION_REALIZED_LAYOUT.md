@@ -16,7 +16,7 @@ ROOT_CAUSE_CLASS = TAIL_NAVIGATION_DURING_UNSTABLE_REALIZATION_LAYOUT
 | Decisive diagnostic | b7346b5e4d24865a81baf5b3ff54de5ed8d9a994 | diag: disable initial tail bring into view (E1 remove StartBringItemIntoView -> survive) |
 | Production fix (code) | d75e77556c58164530827b1c1d341976fe303361 | fix: guard tail navigation on realized layout |
 | Production fix (tip) | 42deb04c60c12a09ece7ea28d8e43020964b51ba | test: fix tail navigation source-contract boundary after P1 rename |
-| Row-key fix (held out) | fb68c81ed335a51bf3664916dcc73f1b1b6385e8 | fix: separate standalone tool and activity row keys |
+| Row-key fix (merged) | fb68c81ed335a51bf3664916dcc73f1b1b6385e8 | fix: separate standalone tool and activity row keys |
 
 ## Frozen fixture
 
@@ -46,8 +46,22 @@ Production fix merged into main as merge commit 8312b16fb742b33b35b3e215ff103016
 
 Included in main: 811798a (control) + d75e775 (code fix) + 42deb04 (test fix).
 
-Excluded from main by design: b7346b5 (decisive diagnostic), all diag/snapshot branches, fb68c81 (row-key fix).
+Excluded from main by design: b7346b5 (decisive diagnostic), all diag/snapshot branches.
+
+## Row-key fix final acceptance
+
+ROW_KEY_FIX_COMMIT = fb68c81ed335a51bf3664916dcc73f1b1b6385e8
+INTEGRATED_VIA = 211de35fe3ba64350c96519fd888e2e5d7832b0a (cherry-pick)
+
+- parity CI = PASS
+- Core tests = PASS (rerun)
+- Tray tests = PASS
+- x64 release publish smoke = PASS
+- artifact ProductVersion = 2026.9.4-integration-row-key-correctness.1+211de35fe3ba64350c96519fd888e2e5d7832b0a
+- runtime crash retest = not required
+
+Invariant: same row key -> same semantic row kind. Standalone tool uses `tool:` namespace, grouped activity uses `activity:` namespace, HistoryRevision not in row key.
 
 ## Next action
 
-Review and merge fb68c81 separately as an independent row-key correctness fix.
+Begin next feature / reverse-engineering phase from main 211de35fe3ba64350c96519fd888e2e5d7832b0a.
